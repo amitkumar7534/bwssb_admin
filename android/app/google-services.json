@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "984153331092",
+    "project_id": "bwssb-admin",
+    "storage_bucket": "bwssb-admin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:984153331092:android:4ff7a15ca51653bddd2b81",
+        "android_client_info": {
+          "package_name": "com.app.bwssb_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBftPZPVvGIl0JFN2KG1DIH8G01OWFZeq0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
