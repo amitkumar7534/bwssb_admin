@@ -25,7 +25,7 @@ class ButtonCtrl extends GetxController {
         buttonData.value = response.data;
         AppUtils.log("Button Data fetched successfully");
         AppUtils.log("Action: ${response.data?.ui}");
-        AppUtils.log("Button Label: ${response.data?.button}");
+        AppUtils.log("Button Label: ${response.data?.buttonLabel}");
       } else {
         buttonData.value = null;
         AppUtils.toastError(response.getError ?? "Failed to fetch button data");

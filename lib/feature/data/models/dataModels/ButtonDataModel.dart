@@ -17,87 +17,209 @@ class ApiResponse {
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      "success": success,
-      "message": message,
-      "data": data.toJson(),
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    "success": success,
+    "message": message,
+    "data": data.toJson(),
+  };
 }
+
+// ─── Top-level data object ────────────────────────────────────────────────────
 
 class ButtonData {
   final String? ui;
   final int? screenNo;
-  final ButtonDetails? details;
-  final String? button;
+
+  /// Sections are present only after the first submission (UPDATE flow).
+  /// On the very first load, this list is null / empty.
+  final List<ButtonSection>? sections;
 
   ButtonData({
     this.ui,
     this.screenNo,
-    this.details,
-    this.button,
+    this.sections,
   });
 
+  // ── Convenience getters ───────────────────────────────────────────────────
+
+  /// True when the API has returned at least one section (i.e. UPDATE flow).
+  bool get hasSections => sections != null && sections!.isNotEmpty;
+
+  /// Returns the LOCATION section if present.
+  ButtonSection? get locationSection => _sectionByType("LOCATION");
+
+  /// Returns the CHECKLIST section if present.
+  ButtonSection? get checklistSection => _sectionByType("CHECKLIST");
+
+  ButtonSection? _sectionByType(String type) {
+    try {
+      return sections?.firstWhere(
+            (s) => s.section.toUpperCase() == type,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The button label to display.
+  /// Uses the CHECKLIST section label when sections exist, otherwise falls
+  /// back to the first section's label, and finally to a generic "SUBMIT".
+  String get buttonLabel {
+    if (!hasSections) return "SUBMIT";
+    final cl = checklistSection?.buttonLabel;
+    if (cl != null && cl.isNotEmpty) return cl;
+    return sections!.first.buttonLabel ?? "SUBMIT";
+  }
+
   factory ButtonData.fromJson(Map<String, dynamic> json) {
+    List<ButtonSection>? sections;
+    final raw = json['sections'];
+    if (raw is List) {
+      sections = raw
+          .map((e) => ButtonSection.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
     return ButtonData(
       ui: json['ui'] as String?,
       screenNo: json['screenNo'] as int?,
-      details: json['details'] != null
-          ? ButtonDetails.fromJson(json['details'])
-          : null,
-      button: json['button'] as String?,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      "ui": ui,
-      "screenNo": screenNo,
-      "details": details?.toJson(),
-      "button": button,
-    };
-  }
-}
-
-class ButtonDetails {
-  final ChecklistDetails? checklistDetails;
-  final SiteInspectionDetails? siteInspectionDetails;
-  final WorkCompletionDetails? workCompletionDetails;
-
-  ButtonDetails({
-    this.checklistDetails,
-    this.siteInspectionDetails,
-    this.workCompletionDetails,
-  });
-
-  factory ButtonDetails.fromJson(Map<String, dynamic> json) {
-    return ButtonDetails(
-      checklistDetails: json['checklistDetails'] != null
-          ? ChecklistDetails.fromJson(json['checklistDetails'])
-          : null,
-      siteInspectionDetails: json['siteInspectionDetails'] != null
-          ? SiteInspectionDetails.fromJson(json['siteInspectionDetails'])
-          : null,
-      workCompletionDetails: json['workCompletionDetails'] != null
-          ? WorkCompletionDetails.fromJson(json['workCompletionDetails'])
-          : null,
+      sections: sections,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    "checklistDetails": checklistDetails?.toJson(),
-    "siteInspectionDetails": siteInspectionDetails?.toJson(),
-    "workCompletionDetails": workCompletionDetails?.toJson(),
+    "ui": ui,
+    "screenNo": screenNo,
+    "sections": sections?.map((s) => s.toJson()).toList(),
   };
 }
 
+// ─── Section ──────────────────────────────────────────────────────────────────
 
+class ButtonSection {
+  final String section;
+  final SectionDetails? details;
+  final String? buttonLabel;
 
+  ButtonSection({
+    required this.section,
+    this.details,
+    this.buttonLabel,
+  });
 
-class ChecklistDetails {
-  final int? stageId;
-  final String? designationName;
+  factory ButtonSection.fromJson(Map<String, dynamic> json) {
+    return ButtonSection(
+      section: json['section'] as String? ?? '',
+      details: json['details'] != null
+          ? SectionDetails.fromJson(
+        json['details'] as Map<String, dynamic>,
+        json['section'] as String? ?? '',
+      )
+          : null,
+      buttonLabel: json['buttonLabel'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    "section": section,
+    "details": details?.toJson(),
+    "buttonLabel": buttonLabel,
+  };
+}
+
+// ─── Section details (polymorphic) ───────────────────────────────────────────
+
+class SectionDetails {
+  /// Present when section == "LOCATION"
+  final LocationDetails? location;
+
+  /// Present when section == "CHECKLIST"
+  final ChecklistSectionDetails? checklistDetails;
+  final List<SiteDocument>? documents;
+
+  SectionDetails({
+    this.location,
+    this.checklistDetails,
+    this.documents,
+  });
+
+  factory SectionDetails.fromJson(
+      Map<String, dynamic> json, String sectionType) {
+    LocationDetails? location;
+    ChecklistSectionDetails? checklist;
+    List<SiteDocument>? documents;
+
+    switch (sectionType.toUpperCase()) {
+      case "LOCATION":
+        location = LocationDetails.fromJson(json);
+        break;
+      case "CHECKLIST":
+        if (json['checkList'] != null) {
+          checklist = ChecklistSectionDetails.fromJson(
+            json['checkList'] as Map<String, dynamic>,
+          );
+        }
+        if (json['documents'] is List) {
+          documents = (json['documents'] as List)
+              .map((e) => SiteDocument.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+        break;
+    }
+
+    return SectionDetails(
+      location: location,
+      checklistDetails: checklist,
+      documents: documents,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (location != null) ...location!.toJson(),
+    if (checklistDetails != null) "checkList": checklistDetails!.toJson(),
+    if (documents != null)
+      "documents": documents!.map((d) => d.toJson()).toList(),
+  };
+}
+
+// ─── Location details ─────────────────────────────────────────────────────────
+
+class LocationDetails {
+  final int? inspectionId;
+  final int? applicationId;
+  final String? latitude;
+  final String? longitude;
+
+  LocationDetails({
+    this.inspectionId,
+    this.applicationId,
+    this.latitude,
+    this.longitude,
+  });
+
+  factory LocationDetails.fromJson(Map<String, dynamic> json) {
+    return LocationDetails(
+      inspectionId: int.tryParse(json['inspectionID']?.toString() ?? ''),
+      applicationId: int.tryParse(json['applicationID']?.toString() ?? ''),
+      latitude: json['latitude']?.toString(),
+      longitude: json['longitude']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    "inspectionID": inspectionId,
+    "applicationID": applicationId,
+    "latitude": latitude,
+    "longitude": longitude,
+  };
+}
+
+// ─── Checklist details ────────────────────────────────────────────────────────
+
+class ChecklistSectionDetails {
+  final int? checklistId;
+  final int? transactionId;
+  final int? stage;
   final int? khata;
   final int? leaseCumSaleDeedOrSaleDeed;
   final int? buildingPlan;
@@ -109,15 +231,12 @@ class ChecklistDetails {
   final int? oc;
   final int? ocPenaltyApplicable;
   final int? siteInspectionAndMeasurement;
-  final String? crtDate;
-  final int? applicationId;
-  final int? checklistId;
-  final int? transactionId;
   final int? crtBy;
 
-  ChecklistDetails({
-    this.stageId,
-    this.designationName,
+  ChecklistSectionDetails({
+    this.checklistId,
+    this.transactionId,
+    this.stage,
     this.khata,
     this.leaseCumSaleDeedOrSaleDeed,
     this.buildingPlan,
@@ -129,98 +248,54 @@ class ChecklistDetails {
     this.oc,
     this.ocPenaltyApplicable,
     this.siteInspectionAndMeasurement,
-    this.crtDate,
-    this.applicationId,
-    this.checklistId,
-    this.transactionId,
     this.crtBy,
   });
 
-  factory ChecklistDetails.fromJson(Map<String, dynamic> json) {
-    return ChecklistDetails(
-      stageId: int.tryParse(json['stage_id']?.toString() ?? ''),
-      designationName: json['designation_name'] as String?,
-      khata: int.tryParse(json['khata']?.toString() ?? ''),
-      leaseCumSaleDeedOrSaleDeed: int.tryParse(json['Lease_cum_sale_deed_or_sale_deed']?.toString() ?? ''),
-      buildingPlan: int.tryParse(json['building_plan']?.toString() ?? ''),
-      rwh: int.tryParse(json['rwh']?.toString() ?? ''),
-      rwhPenaltyApplicable: int.tryParse(json['rwh_penalty_applicable']?.toString() ?? ''),
-      bwssbNoc: int.tryParse(json['bwssb_noc']?.toString() ?? ''),
-      cfo: int.tryParse(json['cfo']?.toString() ?? ''),
-      stpPenaltyApplicable: int.tryParse(json['stp_penalty_applicable']?.toString() ?? ''),
-      oc: int.tryParse(json['oc']?.toString() ?? ''),
-      ocPenaltyApplicable: int.tryParse(json['oc_penalty_applicable']?.toString() ?? ''),
-      siteInspectionAndMeasurement: int.tryParse(json['site_inspection_and_measurement']?.toString() ?? ''),
-      crtDate: json['crtdate'] as String?,
-      applicationId: int.tryParse(json['applicationID']?.toString() ?? ''),
+  factory ChecklistSectionDetails.fromJson(Map<String, dynamic> json) {
+    return ChecklistSectionDetails(
       checklistId: int.tryParse(json['checklistID']?.toString() ?? ''),
       transactionId: int.tryParse(json['transactionID']?.toString() ?? ''),
+      stage: int.tryParse(json['stage']?.toString() ?? ''),
+      khata: int.tryParse(json['khata']?.toString() ?? ''),
+      leaseCumSaleDeedOrSaleDeed:
+      int.tryParse(json['leaseCumSaledeedOrSaledeed']?.toString() ?? ''),
+      buildingPlan: int.tryParse(json['buildingPlan']?.toString() ?? ''),
+      rwh: int.tryParse(json['rwh']?.toString() ?? ''),
+      rwhPenaltyApplicable:
+      int.tryParse(json['rwhPenaltyApplicable']?.toString() ?? ''),
+      bwssbNoc: int.tryParse(json['bwssbNoc']?.toString() ?? ''),
+      cfo: int.tryParse(json['cfo']?.toString() ?? ''),
+      stpPenaltyApplicable:
+      int.tryParse(json['stpPenaltyApplicable']?.toString() ?? ''),
+      oc: int.tryParse(json['oc']?.toString() ?? ''),
+      ocPenaltyApplicable:
+      int.tryParse(json['ocPenaltyApplicable']?.toString() ?? ''),
+      siteInspectionAndMeasurement: int.tryParse(
+          json['siteInspectionAndMeasurement']?.toString() ?? ''),
       crtBy: int.tryParse(json['crtby']?.toString() ?? ''),
     );
   }
 
-
-  Map<String, dynamic> toJson() {
-    return {
-      "stage_id": stageId,
-      "designation_name": designationName,
-      "khata": khata,
-      "Lease_cum_sale_deed_or_sale_deed": leaseCumSaleDeedOrSaleDeed,
-      "building_plan": buildingPlan,
-      "rwh": rwh,
-      "rwh_penalty_applicable": rwhPenaltyApplicable,
-      "bwssb_noc": bwssbNoc,
-      "cfo": cfo,
-      "stp_penalty_applicable": stpPenaltyApplicable,
-      "oc": oc,
-      "oc_penalty_applicable": ocPenaltyApplicable,
-      "site_inspection_and_measurement": siteInspectionAndMeasurement,
-      "crtdate": crtDate,
-      "applicationID": applicationId,
-      "checklistID": checklistId,
-      "transactionID": transactionId,
-      "crtby": crtBy,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    "checklistID": checklistId,
+    "transactionID": transactionId,
+    "stage": stage,
+    "khata": khata,
+    "leaseCumSaledeedOrSaledeed": leaseCumSaleDeedOrSaleDeed,
+    "buildingPlan": buildingPlan,
+    "rwh": rwh,
+    "rwhPenaltyApplicable": rwhPenaltyApplicable,
+    "bwssbNoc": bwssbNoc,
+    "cfo": cfo,
+    "stpPenaltyApplicable": stpPenaltyApplicable,
+    "oc": oc,
+    "ocPenaltyApplicable": ocPenaltyApplicable,
+    "siteInspectionAndMeasurement": siteInspectionAndMeasurement,
+    "crtby": crtBy,
+  };
 }
 
-class SiteInspectionDetails {
-  final int? inspectionId;
-  final int? applicationId;
-  final String? latitude;
-  final String? longitude;
-  final List<SiteDocument>? documents;
-
-  SiteInspectionDetails({
-    this.inspectionId,
-    this.applicationId,
-    this.latitude,
-    this.longitude,
-    this.documents,
-  });
-
-  factory SiteInspectionDetails.fromJson(Map<String, dynamic> json) {
-    return SiteInspectionDetails(
-      inspectionId: int.tryParse(json['inspectionID']?.toString() ?? ''),
-      applicationId: int.tryParse(json['applicationID']?.toString() ?? ''),
-      latitude: json['latitude']?.toString(),
-      longitude: json['longitude']?.toString(),
-      documents: (json['documents'] as List<dynamic>?)
-          ?.map((e) => SiteDocument.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      "inspectionID": inspectionId,
-      "applicationID": applicationId,
-      "latitude": latitude,
-      "longitude": longitude,
-      "documents": documents?.map((e) => e.toJson()).toList(),
-    };
-  }
-}
+// ─── Site document ────────────────────────────────────────────────────────────
 
 class SiteDocument {
   final String? filename;
@@ -231,7 +306,11 @@ class SiteDocument {
   final String? uploadedBy;
   final String? bucketName;
   final String? documentType;
+
+  /// Base64-encoded image string, may include data URI prefix
+  /// e.g. "data:image/png;base64,iVBOR..."
   final String? base64;
+
   final String? applicationID;
   final String? documentID;
   final String? transactionID;
@@ -274,35 +353,30 @@ class SiteDocument {
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      "filename": filename,
-      "originalFileName": originalFileName,
-      "mimeType": mimeType,
-      "fileID": fileID,
-      "userID": userID,
-      "uploadedBy": uploadedBy,
-      "bucketName": bucketName,
-      "documentType": documentType,
-      "base64": base64,
-      "applicationID": applicationID,
-      "documentID": documentID,
-      "transactionID": transactionID,
-      "isAdditionalDocument": isAdditionalDocument,
-      "createdAt": createdAt,
-    };
-  }
-}
+  Map<String, dynamic> toJson() => {
+    "filename": filename,
+    "originalFileName": originalFileName,
+    "mimeType": mimeType,
+    "fileID": fileID,
+    "userID": userID,
+    "uploadedBy": uploadedBy,
+    "bucketName": bucketName,
+    "documentType": documentType,
+    "base64": base64,
+    "applicationID": applicationID,
+    "documentID": documentID,
+    "transactionID": transactionID,
+    "isAdditionalDocument": isAdditionalDocument,
+    "createdAt": createdAt,
+  };
 
-class WorkCompletionDetails {
-
-  WorkCompletionDetails();
-
-  factory WorkCompletionDetails.fromJson(Map<String, dynamic> json) {
-    return WorkCompletionDetails();
+  /// Strips the data URI prefix and returns raw base64 string,
+  /// or null if base64 is absent.
+  String? get rawBase64 {
+    if (base64 == null || base64!.isEmpty) return null;
+    return base64!.contains(',') ? base64!.split(',').last : base64;
   }
 
-  Map<String, dynamic> toJson() {
-    return {};
-  }
+  /// True if this document has usable image data.
+  bool get hasImage => rawBase64 != null && rawBase64!.isNotEmpty;
 }

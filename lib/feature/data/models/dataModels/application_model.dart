@@ -1,6 +1,6 @@
 class ApplicationModel {
-  final int applicationId;
-  final int transactionId;
+  final String applicationId;
+  final String transactionId;
   final String applicationCode;
   final String applicantName;
   final String applicantMobile;
